@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Тренажёр лабиринта</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 20px;
+    overflow: hidden;
+  }
+  h1 {
+    margin-bottom: 10px;
+    color: #00e676;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .controls button {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform .1s, box-shadow .15s;
+  }
+  .controls button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+  .controls button:active { transform: translateY(0); }
+  .btn-add { background: #00e676; color: #1a1a2e; }
+  .btn-rotate { background: #ff9800; color: #1a1a2e; }
+  .btn-fix { background: #2196f3; color: #fff; }
+  .btn-unfix { background: #9c27b0; color: #fff; }
+  .btn-delete { background: #f44336; color: #fff; }
+  .btn-clear { background: #607d8b; color: #fff; }
+  .btn-export { background: #ff5722; color: #fff; }
+
+  .workspace {
+    display: flex;
+    gap: 20px;
+    flex: 1;
+    width: 100%;
+    max-width: 1100px;
+    min-height: 0;
+    align-items: flex-start;
+  }
+
+  .field-container {
+    position: relative;
+    border: 2px solid #00e676;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 30px rgba(0,230,118,.15);
+    flex-shrink: 0;
+  }
+  .field {
+    width: 700px;
+    height: 500px;
+    background:
+      linear-gradient(135deg, #2d5016 0%, #3a6b1e 30%, #4a7c28 60%, #3a6b1e 100%);
+    position: relative;
+    cursor: crosshair;
+  }
+  .field::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(255,255,255,.06) 0%, transparent 60%),
+      radial-gradient(ellipse at 70% 60%, rgba(0,0,0,.15) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .wall {
+    position: absolute;
+    border-radius: 2px;
+    cursor: grab;
+    transition: box-shadow .2s;
+    z-index: 10;
+  }
+  .wall:hover {
+    box-shadow: 0 0 14px rgba(255,255,255,.5);
+  }
+  .wall.dragging {
+    cursor: grabbing;
+    z-index: 100;
+    box-shadow: 0 0 22px rgba(255,255,255,.7);
+  }
+  .wall.fixed {
+    cursor: default;
+    box-shadow: 0 0 8px rgba(168,224,108,.6);
+  }
+  .wall.selected {
+    outline: 2px dashed #ffeb3b;
+    outline-offset: 3px;
+  }
+
+  .panel {
+    flex: 1;
+    min-width: 320px;
+    max-width: 400px;
+    background: #16213e;
+    border-radius: 10px;
+    padding: 16px;
+    border: 1px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+  }
+  .panel h3 {
+    color: #00e676;
+    margin-bottom: 10px;
+    font-size: 15px;
+    border-bottom: 1px solid #0f3460;
+    padding-bottom: 6px;
+    flex-shrink: 0;
+  }
+  .wall-list-scroll {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    margin-bottom: 10px;
+  }
+  .wall-info {
+    background: #1a1a3e;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-family: 'Consolas', monospace;
+    border-left: 3px solid #00e676;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .wall-info:hover { background: #252550; }
+  .wall-info .coords { color: #aaa; }
+  .wall-info .coords span { color: #ffeb3b; }
+  .wall-info .status {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 6px;
+  }
+  .status-free { background: #ff9800; color: #1a1a2e; }
+  .status-fixed { background: #2196f3; color: #fff; }
+
+  .hint {
+    font-size: 12px;
+    color: #888;
+    margin-top: 8px;
+    line-height: 1.5;
+    flex-shrink: 0;
+  }
+  .hint b { color: #aaa; }
+
+  .export-area {
+    width: 100%;
+    margin-top: 10px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    color: #7ee787;
+    min-height: 80px;
+    resize: vertical;
+    line-height: 1.6;
+    flex-shrink: 0;
+  }
+  .export-label {
+    font-size: 11px;
+    color: #666;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+
+  .input-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .input-group label { font-size: 13px; color: #aaa; white-space: nowrap; }
+  .input-group input {
+    width: 70px;
+    padding: 4px 8px;
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    background: #1a1a3e;
+    color: #fff;
+    font-size: 13px;
+  }
+  .input-group input:focus {
+    outline: none;
+    border-color: #00e676;
+  }
+
+  /* Скроллбар для панели */
+  .wall-list-scroll::-webkit-scrollbar { width: 6px; }
+  .wall-list-scroll::-webkit-scrollbar-track { background: #0f3460; border-radius: 3px; }
+  .wall-list-scroll::-webkit-scrollbar-thumb { background: #00e676; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<h1>🏗️ Тренажёр разметки стен лабиринта</h1>
+
+<div class="controls">
+  <div class="input-group">
+    <label>Длина:</label>
+    <input type="number" id="wallLength" value="150" min="10" max="700" step="10">
+    <label>px</label>
+  </div>
+  <div class="input-group">
+    <label>Толщина:</label>
+    <input type="number" id="wallThick" value="5" min="1" max="50" step="1">
+    <label>px</label>
+  </div>
+  <button class="btn-add" onclick="addWall()">➕ Добавить стенку</button>
+  <button class="btn-rotate" onclick="rotateSelected()"> Повернуть</button>
+  <button class="btn-fix" onclick="fixSelected()"> Зафиксировать</button>
+  <button class="btn-unfix" onclick="unfixSelected()"> Снять фиксацию</button>
+  <button class="btn-delete" onclick="deleteSelected()">🗑️ Удалить</button>
+  <button class="btn-clear" onclick="clearAll()">🧹 Очистить всё</button>
+  <button class="btn-export" onclick="exportWalls()">📋 Экспорт</button>
+</div>
+
+<div class="workspace">
+  <div class="field-container">
+    <div class="field" id="field"></div>
+  </div>
+
+  <div class="panel">
+    <h3>📋 Стенки лабиринта</h3>
+    <div class="wall-list-scroll" id="wallList"></div>
+    <div class="hint">
+      <b>ЛКМ + перетаскивание</b> — двигать стенку<br>
+      <b>Клик по стенке</b> — выбрать<br>
+      <b>Двойной клик</b> — поворот на 90°<br>
+      <b>Стрелки ←→↑↓</b> — точное перемещение (1px)<br>
+      <b>Shift+стрелки</b> — перемещение на 10px<br><br>
+      🟠 Свободные стенки — можно двигать<br>
+       Зафиксированные — координаты сохранены
+    </div>
+    <h3 style="margin-top:10px;">📤 Экспорт (Wall)</h3>
+    <div class="export-label">Формат: wN = Wall(x, y, w, h)</div>
+    <textarea class="export-area" id="exportArea" readonly placeholder="Здесь появится экспорт зафиксированных стенок..."></textarea>
+  </div>
+</div>
+
+<script>
+const FIELD_W = 700;
+const FIELD_H = 500;
+
+const COLOR_FREE = '#ff8c42';
+const COLOR_FIXED = '#a8e06c';
+
+let walls = [];
+let selectedId = null;
+let dragState = null;
+let nextId = 1;
+let spawnOffset = 0;
+
+const field = document.getElementById('field');
+const wallList = document.getElementById('wallList');
+const exportArea = document.getElementById('exportArea');
+
+function createWallElement(wall) {
+  const el = document.createElement('div');
+  el.className = 'wall' + (wall.fixed ? ' fixed' : '') + (wall.id === selectedId ? ' selected' : '');
+  el.dataset.id = wall.id;
+  el.style.left = wall.x + 'px';
+  el.style.top = wall.y + 'px';
+  el.style.width = wall.w + 'px';
+  el.style.height = wall.h + 'px';
+  el.style.background = wall.fixed ? COLOR_FIXED : COLOR_FREE;
+
+  el.addEventListener('mousedown', onWallMouseDown);
+  el.addEventListener('dblclick', onWallDblClick);
+
+  field.appendChild(el);
+  wall.el = el;
+}
+
+function addWall() {
+  const length = parseInt(document.getElementById('wallLength').value) || 150;
+  const thick = Math.max(1, parseInt(document.getElementById('wallThick').value) || 5);
+
+  const baseX = 40 + (spawnOffset % 8) * 30;
+  const baseY = 40 + (spawnOffset % 6) * 25;
+  spawnOffset++;
+
+  const wall = {
+    id: nextId++,
+    x: baseX,
+    y: baseY,
+    w: length,
+    h: thick,
+    fixed: false,
+    el: null
+  };
+  walls.push(wall);
+  createWallElement(wall);
+  selectWall(wall.id);
+  updatePanel();
+}
+
+function selectWall(id) {
+  selectedId = id;
+  walls.forEach(w => {
+    if (w.el) {
+      w.el.classList.toggle('selected', w.id === id);
+    }
+  });
+  updatePanel();
+}
+
+function onWallMouseDown(e) {
+  e.preventDefault();
+  const id = parseInt(e.currentTarget.dataset.id);
+  const wall = walls.find(w => w.id === id);
+  if (!wall || wall.fixed) {
+    selectWall(id);
+    return;
+  }
+
+  selectWall(id);
+
+  const rect = field.getBoundingClientRect();
+  dragState = {
+    wall: wall,
+    offsetX: e.clientX - rect.left - wall.x,
+    offsetY: e.clientY - rect.top - wall.y
+  };
+
+  wall.el.classList.add('dragging');
+
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  const rect = field.getBoundingClientRect();
+  let nx = e.clientX - rect.left - dragState.offsetX;
+  let ny = e.clientY - rect.top - dragState.offsetY;
+
+  nx = Math.max(0, Math.min(FIELD_W - dragState.wall.w, nx));
+  ny = Math.max(0, Math.min(FIELD_H - dragState.wall.h, ny));
+
+  dragState.wall.x = Math.round(nx);
+  dragState.wall.y = Math.round(ny);
+  dragState.wall.el.style.left = dragState.wall.x + 'px';
+  dragState.wall.el.style.top = dragState.wall.y + 'px';
+}
+
+function onDragEnd() {
+  if (dragState) {
+    dragState.wall.el.classList.remove('dragging');
+    dragState = null;
+  }
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', onDragEnd);
+  updatePanel();
+}
+
+function onWallDblClick(e) {
+  e.preventDefault();
+  const id = parseInt(e.currentTarget.dataset.id);
+  const wall = walls.find(w => w.id === id);
+  if (wall && !wall.fixed) {
+    rotateWall(wall);
+  }
+}
+
+function rotateWall(wall) {
+  const oldW = wall.w;
+  const oldH = wall.h;
+  const cx = wall.x + oldW / 2;
+  const cy = wall.y + oldH / 2;
+
+  wall.w = oldH;
+  wall.h = oldW;
+
+  wall.x = Math.round(cx - wall.w / 2);
+  wall.y = Math.round(cy - wall.h / 2);
+
+  wall.x = Math.max(0, Math.min(FIELD_W - wall.w, wall.x));
+  wall.y = Math.max(0, Math.min(FIELD_H - wall.h, wall.y));
+
+  wall.el.style.left = wall.x + 'px';
+  wall.el.style.top = wall.y + 'px';
+  wall.el.style.width = wall.w + 'px';
+  wall.el.style.height = wall.h + 'px';
+
+  updatePanel();
+}
+
+function rotateSelected() {
+  if (selectedId === null) return alert('Сначала выберите стенку кликом.');
+  const wall = walls.find(w => w.id === selectedId);
+  if (wall && !wall.fixed) rotateWall(wall);
+}
+
+function fixSelected() {
+  if (selectedId === null) return alert('Сначала выберите стенку кликом.');
+  const wall = walls.find(w => w.id === selectedId);
+  if (wall) {
+    wall.fixed = true;
+    wall.el.classList.add('fixed');
+    wall.el.style.background = COLOR_FIXED;
+    updatePanel();
+  }
+}
+
+function unfixSelected() {
+  if (selectedId === null) return alert('Сначала выберите стенку кликом.');
+  const wall = walls.find(w => w.id === selectedId);
+  if (wall) {
+    wall.fixed = false;
+    wall.el.classList.remove('fixed');
+    wall.el.style.background = COLOR_FREE;
+    updatePanel();
+  }
+}
+
+function deleteSelected() {
+  if (selectedId === null) return alert('Сначала выберите стенку кликом.');
+  const idx = walls.findIndex(w => w.id === selectedId);
+  if (idx !== -1) {
+    walls[idx].el.remove();
+    walls.splice(idx, 1);
+    selectedId = null;
+    updatePanel();
+  }
+}
+
+function clearAll() {
+  if (!confirm('Удалить все стенки?')) return;
+  walls.forEach(w => w.el.remove());
+  walls = [];
+  selectedId = null;
+  spawnOffset = 0;
+  updatePanel();
+}
+
+function exportWalls() {
+  const fixed = walls.filter(w => w.fixed);
+  if (fixed.length === 0) {
+    exportArea.value = '// Нет зафиксированных стенок. Зафиксируйте стенки кнопкой ';
+    return;
+  }
+
+  let lines = [];
+  fixed.forEach((w, i) => {
+    lines.push(`w${i + 1} = Wall(${w.x}, ${w.y}, ${w.w}, ${w.h})`);
+  });
+
+  exportArea.value = lines.join('\n');
+}
+
+function updatePanel() {
+  wallList.innerHTML = '';
+  if (walls.length === 0) {
+    wallList.innerHTML = '<div style="color:#666;font-size:13px;padding:8px;">Нет стенок. Нажмите «➕ Добавить стенку».</div>';
+    return;
+  }
+  walls.forEach(w => {
+    const div = document.createElement('div');
+    div.className = 'wall-info';
+    div.style.borderLeftColor = w.fixed ? COLOR_FIXED : COLOR_FREE;
+    div.innerHTML = `
+      <strong>Стенка #${w.id}</strong>
+      <span class="status ${w.fixed ? 'status-fixed' : 'status-free'}">${w.fixed ? 'ФИКС' : 'СВОБ'}</span>
+      <div class="coords">
+        x: <span>${w.x}</span> &nbsp;
+        y: <span>${w.y}</span> &nbsp;
+        w: <span>${w.w}</span> &nbsp;
+        h: <span>${w.h}</span>
+      </div>
+    `;
+    div.addEventListener('click', () => selectWall(w.id));
+    wallList.appendChild(div);
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (selectedId === null) return;
+  const wall = walls.find(w => w.id === selectedId);
+  if (!wall || wall.fixed) return;
+
+  const step = e.shiftKey ? 10 : 1;
+  let moved = false;
+
+  if (e.key === 'ArrowLeft')  { wall.x = Math.max(0, wall.x - step); moved = true; }
+  if (e.key === 'ArrowRight') { wall.x = Math.min(FIELD_W - wall.w, wall.x + step); moved = true; }
+  if (e.key === 'ArrowUp')    { wall.y = Math.max(0, wall.y - step); moved = true; }
+  if (e.key === 'ArrowDown')  { wall.y = Math.min(FIELD_H - wall.h, wall.y + step); moved = true; }
+
+  if (moved) {
+    e.preventDefault();
+    wall.el.style.left = wall.x + 'px';
+    wall.el.style.top = wall.y + 'px';
+    updatePanel();
+  }
+});
+
+field.addEventListener('mousedown', (e) => {
+  if (e.target === field) {
+    selectedId = null;
+    walls.forEach(w => w.el && w.el.classList.remove('selected'));
+    updatePanel();
+  }
+});
+
+updatePanel();
+</script>
+
+</body>
+</html>
